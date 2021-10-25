@@ -2,68 +2,120 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-int main()
+#include <sys/wait.h>
+#include "main.h"
+
+/**
+ * main - simple shell
+ * Return: 0 on success
+ */
+int main(void)
 {
 	char *line = NULL;
-	size_t len = 0, i = 0, j = 0;
+	size_t len = 0;
 	ssize_t nline;
-	char **argv = NULL, **temp;
+	char **tokens = NULL;
+	int status;
 
-	do
-	{
-		printf("$cisfun# ");
-		nline = getline(&line, &len, stdin);
-		char *token = strtok(line, " ");
-		while (token)
-		{
-			/* Allocate space for 2D array argv */
-			temp = malloc(sizeof(char **) * ++i);
-			if (temp == NULL)
-				perror("Error");
+	do {
+		printf("($) ");
+		nline = getline(&line, &len, stdin); /* get line*/
+		if (nline == EOF)
+			break;
 
-			/* copy arg to temp */
-			for (j = 0; j < i; j++)
-			{
-				if (j == i - 1)
-				{
-					temp[j] = malloc(strlen(token) + 1);
-					if (temp[j] == NULL)
-						perror("Error");
-					temp[j] = token;
-				}
-				else
-					temp[j] = argv[j];
-			}
-			if (argv != NULL)
-				free(argv);
-			argv = temp;
+		line[nline - 1] = '\0';
+		/* tokenize*/
+		tokens = tokenizer(line);
+		/* execute*/
+		status = execute(tokens);
+	} while (status != 1);
 
-			token = strtok(NULL, " ");
-		}
-
-		/* Allocate space for 2D array argv */
-		temp = malloc(sizeof(char **) * ++i);
-		if (temp == NULL)
-			return 1;
-		for (j = 0; j <= i; j++)
-			temp[j] = j == i - 1 ? NULL : argv[j];
-		free(argv);
-		argv = temp;
-
-		for (j = 0; j < i; j++)
-			printf("%s, ", argv[j]);
-
-		if (execve(argv[0], argv, NULL) != -1)
-			perror("Error: ");
-
-		// free memory and clear varaibles
-		//for (j = 0; j < i; j++)
-		//	free(argv[j]);
-		free(argv);
-		argv = NULL;
-		i = 0;
-	} while (nline != -1);
-
+	free_all(tokens, len_tokens(line));
 	free(line);
 	return (0);
+}
+
+/**
+ * tokenizer - splits str into tokens
+ * @str: string to be tokenzed
+ * Return: array of token strings
+ */
+char **tokenizer(char *str)
+{
+	char **tokens, *token;
+	ssize_t length = len_tokens(str), i;
+
+	tokens = malloc((sizeof(char *)) * (length + 1));
+	if (tokens == NULL)
+		perror("Error");
+
+	token = strtok(str, " ");
+	for (i = 0; i < length; i++)
+	{
+		tokens[i] = malloc(strlen(token) + 1);
+		if (tokens[i] == NULL)
+		{
+			free_all(tokens, i);
+			perror("Error");
+		}
+
+		strcpy(tokens[i], token);
+		token = strtok(NULL, " ");
+	}
+	tokens[i] = NULL;
+	return (tokens);
+}
+
+/**
+ * len_tokens - length of token
+ * @str: string
+ * Return: length of token
+ */
+size_t len_tokens(char *str)
+{
+	size_t len = 0, i;
+
+	for (i = 0; str[i] != '\0'; i++)
+		if (str[i] == ' ')
+			len++;
+
+	return (len + 1);
+}
+
+/**
+ * free_all - frees memory for tokens
+ * @tokens: array of string
+ * @size: size of token
+ */
+void free_all(char **tokens, size_t size)
+{
+	size_t i;
+
+	for (i = 0; i < size; i++)
+		free(tokens[i]);
+
+	free(tokens);
+}
+
+/**
+ * execute - execute a command
+ * @args: array of strings
+ * Return: status
+ */
+int execute(char **args)
+{
+	pid_t my_pid, child_pid;
+	int status;
+
+	child_pid = fork();
+	if (child_pid == -1)
+		return (1);
+
+	if (child_pid == 0)
+		if (execve(args[0], args, NULL) == -1)
+			perror("execute Error");
+		else
+			wait(&status);
+
+	return (status);
 }
