@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include "main.h"
+#define TOKEN_LEN 16
 
 /**
  * main - simple shell
@@ -15,24 +16,31 @@ int main(void)
 	size_t len = 0;
 	ssize_t nline;
 	char **tokens = NULL;
-	int status;
+	int status, i;
 
-	do {
+	while (1)
+	{
 		printf("($) ");
 		nline = getline(&line, &len, stdin); /* get line*/
-		if (nline == EOF)
-			break;
+		if (nline == -1)
+		{
+			free(line);
+			return (0);
+		}
 
 		line[nline - 1] = '\0';
+		if (strcmp(line, "exit") == 0)
+			break;
 		/* tokenize*/
 		tokens = tokenizer(line);
 		/* execute*/
 		status = execute(tokens);
-	} while (status != 1);
-
-	free_all(tokens, len_tokens(line));
-	free(line);
-	return (0);
+		/* clean up */
+		free_all(tokens);
+	}
+	if (line != NULL)
+		free(line);
+	return (status);
 }
 
 /**
@@ -42,56 +50,49 @@ int main(void)
  */
 char **tokenizer(char *str)
 {
-	char **tokens, *token;
-	ssize_t length = len_tokens(str), i;
+	char **tokens = NULL, *token;
+	const char *DELIM = " \t\a\r";
+	size_t position = 0, tok_size = TOKEN_LEN, i;
 
-	tokens = malloc((sizeof(char *)) * (length + 1));
+	tokens = malloc(tok_size * sizeof(char *));
 	if (tokens == NULL)
-		perror("Error");
+		return (NULL);
 
-	token = strtok(str, " ");
-	for (i = 0; i < length; i++)
+	token = strtok(str, DELIM);
+	while (token != NULL)
 	{
-		tokens[i] = malloc(strlen(token) + 1);
-		if (tokens[i] == NULL)
+		tokens[position++] = strdup(token);
+
+		/* If allocated memory isn't enough */
+		if (position > tok_size)
 		{
-			free_all(tokens, i);
-			perror("Error");
+			tok_size += TOKEN_LEN;
+			tokens = realloc(tokens, tok_size);
+			if (tokens == NULL)
+			{
+				for (i = 0; i < position; i++)
+					free(tokens[i]);
+				return (NULL);
+			}
 		}
-
-		strcpy(tokens[i], token);
-		token = strtok(NULL, " ");
+		token = strtok(NULL, DELIM);
 	}
-	tokens[i] = NULL;
+	tokens[position] = NULL;
+
 	return (tokens);
-}
-
-/**
- * len_tokens - length of token
- * @str: string
- * Return: length of token
- */
-size_t len_tokens(char *str)
-{
-	size_t len = 0, i;
-
-	for (i = 0; str[i] != '\0'; i++)
-		if (str[i] == ' ')
-			len++;
-
-	return (len + 1);
 }
 
 /**
  * free_all - frees memory for tokens
  * @tokens: array of string
- * @size: size of token
  */
-void free_all(char **tokens, size_t size)
+void free_all(char **tokens)
 {
 	size_t i;
 
-	for (i = 0; i < size; i++)
+	if (tokens == NULL)
+		return;
+	for (i = 0; tokens[i] != NULL; i++)
 		free(tokens[i]);
 
 	free(tokens);
@@ -104,7 +105,7 @@ void free_all(char **tokens, size_t size)
  */
 int execute(char **args)
 {
-	pid_t my_pid, child_pid;
+	pid_t child_pid;
 	int status;
 
 	child_pid = fork();
@@ -112,10 +113,12 @@ int execute(char **args)
 		return (1);
 
 	if (child_pid == 0)
+	{
 		if (execve(args[0], args, NULL) == -1)
-			perror("execute Error");
-		else
-			wait(&status);
+			perror("Error");
+	}
+	else
+		wait(&status);
 
 	return (status);
 }
