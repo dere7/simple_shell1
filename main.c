@@ -1,10 +1,3 @@
-#include <stdio.h>
-#include <errno.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/wait.h>
-#include <sys/stat.h>
 #include "main.h"
 #define TOKEN_LEN 16
 
@@ -14,59 +7,48 @@
  * @argv: array of arguments
  * Return: 0 on success
  */
-int main(int argc __attribute__((unused)), char *argv[])
+int main(void)
 {
-	char *line = NULL;
-	char **tokens = NULL;
-	int status, lineNumber = 1;
-
 	while (1)
 	{
-		fflush(NULL);
-		if (isatty(STDIN_FILENO))
-			print("($) ");
-		readline(&line);
-		tokens = tokenizer(line); /* tokenize*/
-		status = execute(tokens); /* execute*/
-		if (status != 0)
+		char input[SIZE + 1] = {0x0};
+		char *arguments[ARGUMENTS_MAX + 1] = {NULL};
+		char tty_flag;
+		int i;
+		char *pointer = input;
+		int current_status;
+
+		tty_flag = (char) isatty(STDIN_FILENO);
+
+		if (tty_flag == 1)
+			printf("%s ", getuid() == 0 ? "#" : "$");
+		fgets(input, SIZE, stdin);
+
+		if (*pointer == '\n')
+			continue;
+
+		for (i = 0; *pointer && i < (int) sizeof(arguments) ; pointer++)
 		{
-			print(argv[0]);
-			print(": ");
-			print_num(lineNumber);
-			print(": ");
-			fflush(stdout);
-			if (status == 1)
-			{
-				print(tokens[0]);
-				print(": not found\n");
-			}
-			else
-				perror(tokens[0]);
+			if (*pointer == '\n')
+				break;
+			if (*pointer == ' ')
+				continue;
+			for (arguments[i++] = pointer; *pointer != '\n' && *pointer &&
+										   *pointer != ' '; pointer++)
+				;
+			*pointer = '\0';
 		}
-		lineNumber++;
-		free_all(tokens); /* clean up */
-	}
-	if (line != NULL)
-		free(line);
-	return (status);
-}
 
-/**
- * readline - reads till new line
- * @line: string to be stored
- */
-void readline(char **line)
-{
-	ssize_t nline;
-	size_t len;
+		if (compare_strs(COMMAND_EXIT, arguments[0]) == 0)
+			return (0);
+		signal(SIGINT, SIG_DFL);
 
-	nline = getline(line, &len, stdin); /* get line*/
-	if (nline == -1)
-	{
-		free(*line);
-		exit(0);
+		if (fork() == 0)
+			exit(execvp(arguments[0], arguments));
+		signal(SIGINT, SIG_IGN);
+
+		wait(&current_status);
 	}
-	(*line)[nline - 1] = '\0';
 }
 /**
  * tokenizer - splits str into tokens
@@ -107,51 +89,6 @@ char **tokenizer(char *str)
 	return (tokens);
 }
 
-/**
- * execute - execute a command
- * @args: array of strings
- * Return: status
- */
-int execute(char **args)
-{
-	pid_t child_pid;
-	int status, i;
-	builtin_t builtin[] = {
-		{ "cd", "change current working directory: cd [<pathname>]", &cd },
-		{ "exit", "exits out of shell: exit [<status>]", &cexit},
-		{ "env", "prints enviromental variables: env", &env  },
-		{NULL, NULL, NULL}
-	};
-
-	if (args == NULL || args[0] == NULL)
-		return (0);
-
-	/* search for builtins */
-	if (_strcmp(args[0], "help") == 0)
-		return (help(args, builtin));
-
-	for (i = 0; builtin[i].name != NULL; i++)
-	{
-		if (_strcmp(args[0], builtin[i].name) == 0)
-			return (builtin[i].func(args));
-	}
-	if (launch(&args[0]) != 0)
-		return (1);
-
-	child_pid = fork();
-	if (child_pid == -1)
-		return (1);
-
-	if (child_pid == 0)
-	{
-		if (execve(args[0], args, __environ) == -1)
-			return (1);
-	}
-	else
-		wait(&status);
-
-	return (status);
-}
 /**
  * launch - gets path for str
  * @str: path key
