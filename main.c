@@ -1,68 +1,51 @@
 #include "main.h"
 
-/* global variable for Ctrl-C handling */
-unsigned int sig_flag;
-
 /**
- * sig_handler - handles Ctrl-C signal interrupt
- * @uuv: unused variable (required for signal function prototype)
- *
- * Return: void
+ * main - simple shell
+ * @argc: number of arguments
+ * @argv: array of arguments
+ * Return: 0 on success
  */
-static void sig_handler(int uuv)
+int main(void)
 {
-	(void) uuv;
-	if (sig_flag == 0)
-		_puts("\n$ ");
-	else
-		_puts("\n");
-}
-
-/**
- * main - main function for the shell
- * @argc: number of arguments passed to main
- * @argv: array of arguments passed to main
- * @environment: array of environment variables
- *
- * Return: 0 or exit status, or ?
- */
-int main(int argc __attribute__((unused)), char **argv, char **environment)
-{
-	size_t len_buffer = 0;
-	unsigned int is_pipe = 0, i;
-	vars_t vars = {NULL, NULL, NULL, 0, NULL, 0, NULL};
-
-	vars.argv = argv;
-	vars.env = make_env(environment);
-	signal(SIGINT, sig_handler);
-	if (!isatty(STDIN_FILENO))
-		is_pipe = 1;
-	if (is_pipe == 0)
-		_puts("$ ");
-	sig_flag = 0;
-	while (getline(&(vars.buffer), &len_buffer, stdin) != -1)
+	while (1)
 	{
-		sig_flag = 1;
-		vars.count++;
-		vars.commands = tokenize(vars.buffer, ";");
-		for (i = 0; vars.commands && vars.commands[i] != NULL; i++)
+		char input[SIZE + 1] = {0x0};
+		char *arguments[ARGUMENTS_MAX + 1] = {NULL};
+		char tty_flag;
+		int i;
+		char *pointer = input;
+		int current_status;
+
+		tty_flag = (char) isatty(STDIN_FILENO);
+
+		if (tty_flag == 1)
+			printf("%s ", getuid() == 0 ? "#" : "$");
+		fgets(input, SIZE, stdin);
+
+		if (*pointer == '\n')
+			continue;
+
+		for (i = 0; *pointer && i < (int) sizeof(arguments) ; pointer++)
 		{
-			vars.av = tokenize(vars.commands[i], "\n \t\r");
-			if (vars.av && vars.av[0])
-				if (check_for_builtins(&vars) == NULL)
-					check_for_path(&vars);
-			free(vars.av);
+			if (*pointer == '\n')
+				break;
+			if (*pointer == ' ')
+				continue;
+			for (arguments[i++] = pointer; *pointer != '\n' && *pointer &&
+										   *pointer != ' '; pointer++)
+				;
+			*pointer = '\0';
 		}
-		free(vars.buffer);
-		free(vars.commands);
-		sig_flag = 0;
-		if (is_pipe == 0)
-			_puts("$ ");
-		vars.buffer = NULL;
+
+		if (compare_strs(COMMAND_EXIT, arguments[0]) == 0)
+			return (0);
+		signal(SIGINT, SIG_DFL);
+
+		if (fork() == 0)
+			exit(execvp(arguments[0], arguments));
+		signal(SIGINT, SIG_IGN);
+
+		wait(&current_status);
 	}
-	if (is_pipe == 0)
-		_puts("\n");
-	free_env(vars.env);
-	free(vars.buffer);
-	exit(vars.status);
 }
