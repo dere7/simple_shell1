@@ -1,6 +1,11 @@
 #ifndef GUARD_SHELL
 #define GUARD_SHELL
 
+
+#define ARGUMENTS_MAX 63
+#define SIZE 255
+#define COMMAND_EXIT "exit"
+
 #include <stddef.h>
 
 char **tokenizer(char *str);
@@ -10,6 +15,15 @@ int execute(char **args);
 int launch(char **str);
 void readline(char **line);
 
+#include <stdio.h>
+#include <errno.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <sys/stat.h>
+
+int compare_strs(char *s1, char *s2);
 /* utility functions */
 char *_getenv(char *str);
 
